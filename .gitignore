@@ -1,0 +1,19 @@
+env ubuntu.txt
+*.pem
+*.key
+node_modules/
+.next/
+.local/
+.env*
+!.env.example
+__pycache__/
+*.tsbuildinfo
+playwright-report/
+test-results/
+~$*.xlsx
+*.xlsx
+*.pdf
+xlsx_report_stdout.json
+data_source_report.json
+kesimpulan.txt.txt
+

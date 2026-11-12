@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { GET } from '../app/api/data/route';
+
+const request = (query: string) => new Request(`http://localhost:3000/api/data?${query}`);
+test('allocation reads expose exact canonical batches, real POSM presence and filtered CSV', async () => {
+ process.env.PANAKO_LOCAL_MODE='true';
+ Object.assign(process.env,{NODE_ENV:'development'});
+ const source=JSON.parse(await readFile('data/canonical.json','utf8')).allocations;
+ const response=await GET(request('entity=allocations&pageSize=2&sort=store_name&order=asc'));
+ assert.equal(response.status,200);
+ const list=await response.json();assert.equal(list.total,513);assert.equal(list.data.length,2);
+ assert.ok(list.data[0].store_name.localeCompare(list.data[1].store_name)<=0);
+ const summary=await (await GET(request('entity=allocation-summary'))).json();
+ assert.equal(summary.data.total,513);assert.deepEqual(summary.data.batches,{'batch 1':413,'batch 2':100});
+ assert.equal(summary.data.installed,0);
+ const analytics=await (await GET(request('entity=allocation-analytics'))).json();
+ const expected:Record<string,number>={};for(const row of source)for(const key of Object.keys(row.items))expected[key]=(expected[key]??0)+1;
+ assert.deepEqual(analytics.data.posm,expected);
+ const key=Object.keys(expected)[0];
+ const filtered=await (await GET(request(`entity=allocations&batch=batch+1&posm=${encodeURIComponent(key)}&pageSize=1000`))).json();
+ assert.equal(filtered.total,source.filter((r:any)=>r.stage==='batch 1'&&Object.hasOwn(r.items,key)).length);
+ const csv=await GET(request('entity=allocations&batch=batch+2&format=csv&pageSize=1'));
+ assert.match(csv.headers.get('content-type')??'',/text\/csv/);
+ const text=await csv.text();assert.match(text,/store_name/);assert.match(text,/batch 2/);assert.doesNotMatch(text,/batch 1/);
+ const aliases=await (await GET(request('entity=allocations&search=MORODADI&sort=storeName&direction=desc&status=Hold'))).json();
+ assert.equal(aliases.total,source.filter((r:any)=>JSON.stringify(r).toLowerCase().includes('morodadi')&&r.status_survey==='Hold').length);
+ assert.ok(aliases.data.length>0);
+ assert.equal((await GET(request('entity=allocations&sort=invalid'))).status,400);
+ for(const entity of ['allocation-batches','allocation-reconciliation'])assert.equal((await GET(request(`entity=${entity}`))).status,200);
+});

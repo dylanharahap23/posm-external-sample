@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {homedir} from 'node:os';
+import {join} from 'node:path';
+const credentials=Object.fromEntries(readFileSync(join(homedir(),'.config/panako/admin-login.txt'),'utf8').split(/\r?\n/).filter(x=>x.includes(': ')).map(x=>{const i=x.indexOf(': ');return[x.slice(0,i),x.slice(i+2)];}));
+const base=credentials.URL;
+let response=await fetch(`${base}/api/data?entity=allocations`);assert.equal(response.status,401,'Unauthenticated allocations must be denied');
+response=await fetch(`${base}/api/auth`,{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify({username:credentials.Username,password:credentials.Password})});assert.equal(response.status,200,'Login failed');
+const cookie=response.headers.get('set-cookie')?.split(';')[0];assert.ok(cookie,'No session cookie');
+const get=async(entity,params={})=>{const r=await fetch(`${base}/api/data?${new URLSearchParams({entity,...params})}`,{headers:{Cookie:cookie}});assert.equal(r.status,200,`${entity}: HTTP ${r.status}`);return r.json();};
+const source=JSON.parse(readFileSync('data/canonical.json','utf8'));
+const expected=source.allocations.length;
+const list=await get('allocations',{pageSize:'1000'});assert.equal(list.total,expected);assert.equal(list.data.length,expected);
+assert.equal(new Set(list.data.map(x=>x.id)).size,expected);
+assert.ok(list.data.every(x=>x.source.file&&x.source.sheet&&x.source.row));
+for(const batch of [...new Set(source.allocations.map(x=>x.stage))]){const count=source.allocations.filter(x=>x.stage===batch).length;const filtered=await get('allocations',{batch,pageSize:'1000'});assert.equal(filtered.total,count);console.log('BATCH',batch,count);}
+const analytics=await get('allocation-analytics');assert.equal(analytics.data.total,expected);
+const item=Object.keys(source.allocations[0].items)[0];const posm=await get('allocations',{posm:item,pageSize:'1000'});assert.equal(posm.total,source.allocations.filter(x=>Object.hasOwn(x.items,item)).length);
+const first=await get('allocations',{pageSize:'25'}),second=await get('allocations',{page:'2',pageSize:'25'});assert.equal(first.data.length,25);assert.ok(!first.data.some(a=>second.data.some(b=>a.id===b.id)));
+const summary=await get('allocation-summary');const reconciliation=await get('allocation-reconciliation');assert.ok(Array.isArray(reconciliation.data.allocationStoreLinks));
+const dashboard=await get('dashboard');assert.equal(dashboard.data.stores,source.stores.length);assert.ok(dashboard.data.projects>=source.projects.length);
+console.log(JSON.stringify({verified:true,allocations:expected,posmFilterCount:posm.total,summary:summary.data,stores:dashboard.data.stores,projects:dashboard.data.projects},null,2));

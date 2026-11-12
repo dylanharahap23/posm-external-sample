@@ -1,0 +1,10 @@
+import { z } from 'zod';
+const text = z.string().trim().min(1).max(500);
+export const statusSchema = z.enum(['Completed','Active','Pending','On Hold','Cancelled','Unknown']);
+export const projectSchema = z.object({storeId:z.string().uuid(),name:text,type:text.default('Unknown'),status:statusSchema.default('Pending'),rawStatus:text.optional(),requestDate:z.string().date().nullable().optional(),brand:text.default('Unknown'),source:z.record(z.string(),z.unknown()).default({}),stages:z.record(z.string(),z.unknown()).default({}),remarks:z.string().max(5000).default('')}).strict();
+export const candidateSchema = z.object({name:text,region:text,latitude:z.number().min(-90).max(90).nullable().optional(),longitude:z.number().min(-180).max(180).nullable().optional(),factors:z.record(z.string(),z.number().min(0).max(100).nullable()),provenance:text,estimatedCost:z.number().nonnegative().finite().nullable(),remarks:z.string().max(5000).optional()}).strict();
+export const observationSchema = z.object({competitor:text,name:text.optional(),region:text,channel:text.optional(),address:text.optional(),latitude:z.number().min(-90).max(90).nullable().optional(),longitude:z.number().min(-180).max(180).nullable().optional(),observedAt:z.string().datetime(),source:text,notes:z.string().max(5000).default('')}).strict();
+export const allocationReconciliationSchema = z.object({allocationId:z.string().uuid(),storeId:z.string().uuid(),method:text,confidence:z.number().finite().min(0).max(1).nullable().default(null),verificationStatus:z.enum(['pending','verified','rejected'])}).strict();
+export const allocationProjectLinkSchema = z.object({allocationId:z.string().uuid(),projectId:z.string().uuid()}).strict();
+export const weightsSchema = z.record(z.string(), z.number().finite().nonnegative()).refine(w=>Object.values(w).reduce((a,b)=>a+b,0)>0,'Weights must sum above zero');
+export const scenarioSchema = z.object({name:text,budget:z.number().finite().nonnegative(),target:z.number().int().min(0).max(100000),capacity:z.number().int().min(0).max(100000),maxCost:z.number().finite().nonnegative(),regions:z.array(text).default([]),weights:weightsSchema}).strict();
